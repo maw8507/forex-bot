@@ -3,7 +3,6 @@ import time
 from collections import defaultdict, deque
 from config.settings import load_config, get_settings
 from data.price_fetcher import OandaPriceFetcher
-from execution.trade_executor import TradeExecutor
 from portfolio.portfolio_manager import PortfolioManager
 from strategy.strategy_engine import StrategyEngine
 from utils.logger import logger
