@@ -1,7 +1,6 @@
-
 import time
 from collections import defaultdict, deque
-from config.settings import load_config
+from config.settings import load_config, get_settings
 from data.price_fetcher import OandaPriceFetcher
 from execution.trade_executor import TradeExecutor
 from portfolio.portfolio_manager import PortfolioManager
@@ -10,6 +9,8 @@ from utils.logger import logger
 from utils.state_manager import should_fetch_candles, update_last_fetch_time
 
 load_config()
+settings = get_settings()
+
 price_fetcher = OandaPriceFetcher()
 portfolio = PortfolioManager()
 executor = TradeExecutor()
@@ -34,6 +35,7 @@ def preload_history():
 def run_live_trading():
     logger.info("Starting live trading...")
     preload_history()
+
     while True:
         for pair, timeframes in portfolio.trading_pairs.items():
             for tf in timeframes:
