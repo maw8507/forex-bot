@@ -5,7 +5,6 @@ from config.settings import load_config, get_settings
 from data.price_fetcher import OandaPriceFetcher
 from portfolio.portfolio_manager import PortfolioManager
 from strategy.strategy_engine import StrategyEngine
-from execution.trade_executor import TradeExecutor
 from utils.logger import logger
 from utils.state_manager import should_fetch_candles, update_last_fetch_time
 
