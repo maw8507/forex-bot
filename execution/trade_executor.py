@@ -1,84 +1,77 @@
 import os
-import requests
+import time
+from collections import defaultdict, deque
+from config.settings import load_config, get_settings
+from data.price_fetcher import OandaPriceFetcher
+from execution.trade_executor import TradeExecutor
+from portfolio.portfolio_manager import PortfolioManager
+from strategy.strategy_engine import StrategyEngine
 from utils.logger import logger
-from logic.capital_allocator import allocate_capital
+from utils.state_manager import should_fetch_candles, update_last_fetch_time
 
-class TradeExecutor:
-    def __init__(self):
-        self.account_id = os.getenv("OANDA_ACCOUNT_ID")
-        self.api_key = os.getenv("OANDA_API_KEY")
-        env = os.getenv("OANDA_ENVIRONMENT", "practice").lower()
-        self.base_url = "https://api-fxpractice.oanda.com/v3" if env == "practice" else "https://api-fxtrade.oanda.com/v3"
-        self.headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+load_config()
+settings = get_settings()
 
-    def execute_trade(self, signal, portfolio):
-        position = portfolio.get_position(signal["pair"])
-        capital = allocate_capital(signal, portfolio)
-        instrument = signal["pair"].replace("_", "")
+price_fetcher = OandaPriceFetcher()
+portfolio = PortfolioManager()
+executor = TradeExecutor()
+strategy_engine = StrategyEngine()
 
-        if signal["action"] == "buy":
-            if position and position["side"] == "long":
-                logger.info(f"Already in long {signal['pair']}")
-            else:
-                logger.info(f"Sending LONG order to OANDA for {signal['pair']} with ${capital:.2f}")
-                self._place_order(instrument, capital, "buy")
+CANDLE_LOOKBACK = 300
+candle_buffer = defaultdict(lambda: deque(maxlen=CANDLE_LOOKBACK))
 
-        elif signal["action"] == "sell":
-            if position and position["side"] == "short":
-                logger.info(f"Already in short {signal['pair']}")
-            else:
-                logger.info(f"Sending SHORT order to OANDA for {signal['pair']} with ${capital:.2f}")
-                self._place_order(instrument, capital, "sell")
+DEMO_MODE = settings.get("OANDA_ENVIRONMENT", "practice") == "practice"
+INITIAL_DEMO_BALANCE = 1000.0
 
-        elif signal["action"] == "close":
-            if position:
-                logger.info(f"Closing position on {signal['pair']}")
-                self._close_position(instrument)
-                portfolio.close_position(signal["pair"])
 
-    def _place_order(self, instrument, usd_amount, side):
-        units = self._calculate_units(instrument, usd_amount, side)
-        if not units:
-            logger.warning(f"Unable to calculate units for {instrument}")
-            return
+def preload_history():
+    logger.info("Preloading historical candles...")
+    for pair, timeframes in portfolio.trading_pairs.items():
+        for tf in timeframes:
+            try:
+                candles = price_fetcher.get_candle_data(pair, tf, count=CANDLE_LOOKBACK)
+                key = f"{pair}:{tf}"
+                candle_buffer[key].extend(candles)
+                update_last_fetch_time(pair, tf)
+                logger.info(f"Loaded {len(candles)} candles for {pair} {tf}")
+            except Exception as e:
+                logger.error(f"Preload failed for {pair} {tf}: {e}")
 
-        order_data = {
-            "order": {
-                "units": units,
-                "instrument": instrument,
-                "timeInForce": "FOK",
-                "type": "MARKET",
-                "positionFill": "DEFAULT"
-            }
-        }
 
-        url = f"{self.base_url}/accounts/{self.account_id}/orders"
-        response = requests.post(url, json=order_data, headers=self.headers)
+def reset_demo_portfolio():
+    if DEMO_MODE:
+        logger.info("Resetting demo portfolio to $1000...")
+        portfolio.reset_demo_balance(INITIAL_DEMO_BALANCE)
 
-        if response.status_code == 201:
-            logger.info(f"Trade executed for {instrument}: {side.upper()} {units} units")
-        else:
-            logger.error(f"Order failed: {response.status_code} {response.text}")
 
-    def _calculate_units(self, instrument, usd_amount, side):
-        try:
-            price_url = f"{self.base_url}/instruments/{instrument}/pricing"
-            params = {"instruments": instrument}
-            r = requests.get(price_url, headers=self.headers, params=params)
-            r.raise_for_status()
-            price = float(r.json()["prices"][0]["asks"][0]["price"])
-            units = int(usd_amount / price)
-            return str(units if side == "buy" else -units)
-        except Exception as e:
-            logger.error(f"Failed to get price for {instrument}: {e}")
-            return None
+def run_live_trading():
+    logger.info("Starting live trading...")
+    preload_history()
+    reset_demo_portfolio()
 
-    def _close_position(self, instrument):
-        try:
-            url = f"{self.base_url}/accounts/{self.account_id}/positions/{instrument}/close"
-            requests.put(url, headers=self.headers, json={"longUnits": "ALL", "shortUnits": "ALL"})
-        except Exception as e:
-            logger.error(f"Failed to close position on {instrument}: {e}")
+    while True:
+        for pair, timeframes in portfolio.trading_pairs.items():
+            for tf in timeframes:
+                if not should_fetch_candles(pair, tf):
+                    continue
+                try:
+                    new_candles = price_fetcher.get_candle_data(pair, tf, count=1)
+                    if not new_candles:
+                        continue
+                    key = f"{pair}:{tf}"
+                    candle_buffer[key].extend(new_candles)
+                    update_last_fetch_time(pair, tf)
+                    candles = list(candle_buffer[key])
+                    signals = strategy_engine.generate_signals(pair, tf, candles)
+                    for signal in signals:
+                        executor.execute_trade(signal, portfolio)
+                except Exception as e:
+                    logger.exception(f"Processing error {pair} {tf}: {e}")
+        time.sleep(10)
+
+
+if __name__ == "__main__":
+    try:
+        run_live_trading()
+    except KeyboardInterrupt:
+        logger.info("Bot shutdown requested.")
