@@ -7,6 +7,7 @@ from portfolio.portfolio_manager import PortfolioManager
 from strategy.strategy_engine import StrategyEngine
 from utils.logger import logger
 from utils.state_manager import should_fetch_candles, update_last_fetch_time
+from utils.time_utils import is_forex_market_open
 
 load_config()
 settings = get_settings()
@@ -37,6 +38,11 @@ def run_live_trading():
     preload_history()
 
     while True:
+        if not is_forex_market_open():
+            logger.info("Forex market is closed. Skipping trading loop.")
+            time.sleep(60)
+            continue
+
         for pair, timeframes in portfolio.trading_pairs.items():
             for tf in timeframes:
                 if not should_fetch_candles(pair, tf):
@@ -55,9 +61,3 @@ def run_live_trading():
                 except Exception as e:
                     logger.exception(f"Processing error {pair} {tf}: {e}")
         time.sleep(10)
-
-if __name__ == "__main__":
-    try:
-        run_live_trading()
-    except KeyboardInterrupt:
-        logger.info("Bot shutdown requested.")
