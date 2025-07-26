@@ -61,3 +61,6 @@ def run_live_trading():
                 except Exception as e:
                     logger.exception(f"Processing error {pair} {tf}: {e}")
         time.sleep(10)
+
+if __name__ == "__main__":
+    run_live_trading()
