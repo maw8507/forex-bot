@@ -21,7 +21,7 @@ class TradeExecutor:
     def execute_trade(self, signal, portfolio):
         position = portfolio.get_position(signal["pair"])
         capital = allocate_capital(signal, portfolio)
-        instrument = signal["pair"].replace("_", "")
+        instrument = signal["pair"]
 
         if signal["action"] == "buy":
             if position and position["side"] == "long":
