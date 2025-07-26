@@ -5,6 +5,7 @@ from config.settings import load_config, get_settings
 from data.price_fetcher import OandaPriceFetcher
 from portfolio.portfolio_manager import PortfolioManager
 from strategy.strategy_engine import StrategyEngine
+from execution.trade_executor import TradeExecutor
 from utils.logger import logger
 from utils.state_manager import should_fetch_candles, update_last_fetch_time
 
@@ -22,7 +23,6 @@ candle_buffer = defaultdict(lambda: deque(maxlen=CANDLE_LOOKBACK))
 DEMO_MODE = settings.get("OANDA_ENVIRONMENT", "practice") == "practice"
 INITIAL_DEMO_BALANCE = 1000.0
 
-
 def preload_history():
     logger.info("Preloading historical candles...")
     for pair, timeframes in portfolio.trading_pairs.items():
@@ -36,12 +36,10 @@ def preload_history():
             except Exception as e:
                 logger.error(f"Preload failed for {pair} {tf}: {e}")
 
-
 def reset_demo_portfolio():
     if DEMO_MODE:
         logger.info("Resetting demo portfolio to $1000...")
         portfolio.reset_demo_balance(INITIAL_DEMO_BALANCE)
-
 
 def run_live_trading():
     logger.info("Starting live trading...")
@@ -67,7 +65,6 @@ def run_live_trading():
                 except Exception as e:
                     logger.exception(f"Processing error {pair} {tf}: {e}")
         time.sleep(10)
-
 
 if __name__ == "__main__":
     try:
