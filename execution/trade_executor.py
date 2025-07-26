@@ -68,17 +68,17 @@ class TradeExecutor:
             logger.error(f"Order failed: {response.status_code} {response.text}")
 
     def _calculate_units(self, instrument, usd_amount, side):
-    try:
-        price_url = f"{self.base_url}/accounts/{self.account_id}/pricing"
-        params = {"instruments": instrument}
-        r = requests.get(price_url, headers=self.headers, params=params)
-        r.raise_for_status()
-        price = float(r.json()["prices"][0]["asks"][0]["price"])
-        units = int(usd_amount / price)
-        return str(units if side == "buy" else -units)
-    except Exception as e:
-        logger.error(f"Failed to get price for {instrument}: {e}")
-        return None
+        try:
+            price_url = f"{self.base_url}/accounts/{self.account_id}/pricing"
+            params = {"instruments": instrument}
+            r = requests.get(price_url, headers=self.headers, params=params)
+            r.raise_for_status()
+            price = float(r.json()["prices"][0]["asks"][0]["price"])
+            units = int(usd_amount / price)
+            return str(units if side == "buy" else -units)
+        except Exception as e:
+            logger.error(f"Failed to get price for {instrument}: {e}")
+            return None
 
     def _close_position(self, instrument):
         try:
